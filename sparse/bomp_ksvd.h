@@ -12,12 +12,14 @@
 
 void BOMP(
     const double* dict, int atomSize, int nbAtoms,
-    const double* signals, int nbSignals, int maxEntries,
+    const double* signals, int nbSignals,
+    int maxEntries, double epsilon,
     int* nbEntries, int* indices, double* values);
 
 void KSVD(
     double* dict, int atomSize, int nbAtoms,
-    const double* signals, int nbSignals, int maxEntries,
+    const double* signals, int nbSignals,
+    int maxEntries, double epsilon,
     int nbIters);
 
 #endif

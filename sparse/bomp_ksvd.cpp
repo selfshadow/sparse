@@ -2,7 +2,20 @@
 
 #include <memory.h>
 #include <math.h>
+#include <stdio.h>
 
+
+inline void Set(double* v, double x, int len)
+{
+    for (int i = 0; i < len; i++)
+        v[i] = x;
+}
+
+inline void Copy(double* r, const double* v, int len)
+{
+    for (int i = 0; i < len; i++)
+        r[i] = v[i];
+}
 
 inline double Dot(const double* a, const double* b, int len)
 {
@@ -36,18 +49,20 @@ inline void BackSubT(const double* M, const double* y, double* x, int len, int d
 // Returns the index to the entry in v with the highest absolute value
 inline int FindAbsMax(const double* v, int len)
 {
-    int    max_i = 0;
-    double max_x = 0.0;
+    int    maxI = 0;
+    double maxX = 0.0;
+
     for (int i = 0; i < len; i++)
     {
         double x = fabs(v[i]);
-        if (max_x < x)
+        if (maxX < x)
         {
-            max_x = x;
-            max_i = i;
+            maxX = x;
+            maxI = i;
         }
     }
-    return max_i;
+
+    return maxI;
 }
 
 inline void GramMatrix(const double* M, double* G, int nbColumns, int nbRows)
@@ -81,14 +96,16 @@ inline void Normalize(double* v, int len)
 
 struct OMPContext
 {
-    OMPContext(int atomSize_, int nbAtoms_, int maxEntries_) :
+    OMPContext(int atomSize_, int nbAtoms_, int maxEntries_, double epsilon_) :
         atomSize(atomSize_),
         nbAtoms(nbAtoms_),
-        maxEntries(maxEntries_)
+        maxEntries(maxEntries_),
+        epsilon(epsilon_*epsilon_)
     {
         G      = new double[nbAtoms*nbAtoms];
         alpha0 = new double[nbAtoms];
         alpha  = new double[nbAtoms];
+        beta   = new double[nbAtoms];
         used   = new bool  [nbAtoms];
         L      = new double[maxEntries*maxEntries];
 
@@ -101,6 +118,7 @@ struct OMPContext
         delete[] G;
         delete[] alpha0;
         delete[] alpha;
+        delete[] beta;
         delete[] used;
         delete[] L;
 
@@ -110,11 +128,14 @@ struct OMPContext
 
     int atomSize;
     int nbAtoms;
+
     int maxEntries;
+    double epsilon;
 
     double* G;
     double* alpha0;
     double* alpha;
+    double* beta;
     bool*   used;
     double* L;
 
@@ -130,22 +151,31 @@ void BOMPInternal(
 {
     GramMatrix(dict, c.G, c.atomSize, c.nbAtoms);
 
+    const double* signal = signals;
+
     for (int s = 0; s < nbSignals; s++)
     {
         for (int i = 0; i < c.nbAtoms; i++)
         {
             // Compute alpha0 = D.x
-            c.alpha0[i] = Dot(&dict[i*c.atomSize], &signals[s*c.atomSize], c.atomSize);
+            c.alpha0[i] = Dot(&dict[i*c.atomSize], signal, c.atomSize);
             c.alpha[i]  = c.alpha0[i];
             c.used[i]   = false;
         }
 
         c.L[0] = 1.0;
 
+        double eps = Dot(signal, signal, c.atomSize);
+        double delta = 0.0;
+
         int nbEntries = 0;
 
         for (int i = 0; i < c.maxEntries; i++)
         {
+            // Exit if we've hit the threshold
+            if (eps <= c.epsilon)
+                break;
+
             int aIndex = FindAbsMax(c.alpha, c.nbAtoms);
 
             // Exit if atom has already been used
@@ -177,16 +207,23 @@ void BOMPInternal(
 
             for (int j = 0; j < c.nbAtoms; j++)
             {
-                double dot = 0.0;
+                c.beta[j] = 0.0;
                 for (int m = 0; m < nbEntries; m++)
-                    dot += c.G[j*c.nbAtoms + indices[m]]*values[m];
-                c.alpha[j] = c.alpha0[j] - dot;
+                    c.beta[j] += c.G[j*c.nbAtoms + indices[m]]*values[m];
+                c.alpha[j] = c.alpha0[j] - c.beta[j];
             }
+
+            eps += delta;
+            delta = 0.0;
+            for (int m = 0; m < nbEntries; m++)
+                delta += c.beta[indices[m]]*values[m];
+            eps -= delta;
         }
 
         *entries++ = nbEntries;
         indices   += c.maxEntries;
         values    += c.maxEntries;
+        signal    += c.atomSize;
     }
 }
 
@@ -206,6 +243,10 @@ struct KSVDContext
         GammaJ = new double[nbSignals];
 
         refs   = new int[nbSignals];
+
+        used   = new bool[nbSignals];
+        for (int i = 0; i < nbSignals; i++)
+            used[i] = false;
 
         atom   = new double[atomSize];
     }
@@ -235,6 +276,8 @@ struct KSVDContext
     int     nbRefs;
     int*    refs;   // Indices for the signals referencing the current atom
 
+    bool*   used;   // Track signals that have replaced unused atoms in the dictionary
+
     double* atom;   // Revised atom
 };
 
@@ -257,6 +300,43 @@ void FindReferences(KSVDContext& k, int j)
             }
         }
     }
+}
+
+void ReplaceAtom(KSVDContext& k, const double* dict, const double* signals, double* atom)
+{
+    int    maxI = 0;
+    double maxE = 0.0;
+
+    for (int s = 0; s < k.nbSignals; s++)
+    {
+        double error = 0.0;
+
+        for (int i = 0; i < k.atomSize; i++)
+        {
+            double x = 0.0;
+            for (int m = 0; m < k.GammaE[s]; m++)
+            {
+                int aIndex = k.GammaI[s*k.maxEntries + m];
+                x += dict[aIndex*k.atomSize + i]*k.GammaV[s*k.maxEntries + m];
+            }
+
+            double v = signals[s*k.atomSize + i] - x;
+            error += v*v;
+        }
+
+        if (maxE < error && !k.used[s])
+        {
+            maxE = error;
+            maxI = s;
+        }
+    }
+
+    // Mark signal so it's not used to replace multiple atoms
+    k.used[maxI] = true;
+
+    for (int i = 0; i < k.atomSize; i++)
+        atom[i] = signals[maxI*k.atomSize + i];
+    Normalize(atom, k.atomSize);
 }
 
 void UpdateAtom(KSVDContext& k, const double* dict, const double* signals)
@@ -312,28 +392,27 @@ void KSVDStep(
         // Find signals referencing the J-th atom
         FindReferences(k, j);
 
-        // Clear the atom
-        for (int i = 0; i < k.atomSize; i++)
-            dict[j*k.atomSize + i] = 0.0;
-
-        // TODO: replace atom when unreferenced
+        // If the atom isn't referenced, replace it with the worst-represented signal
         if (k.nbRefs == 0)
+        {
+            ReplaceAtom(k, dict, signals, &dict[j*k.atomSize]);
             continue;
+        }
+
+        // Clear the current atom in the dictionary
+        Set(&dict[j*k.atomSize], 0.0, k.atomSize);
 
         // Compute revised atom
-        for (int i = 0; i < k.atomSize; i++)
-            k.atom[i] = 0.0;
+        Set(k.atom, 0.0, k.atomSize);
         UpdateAtom(k, dict, signals);  // TODO: Cache computation for UpdateWeights later
         Normalize(k.atom, k.atomSize);
 
         // Compute new weights
-        for (int i = 0; i < k.nbRefs; i++)
-            k.GammaJ[i] = 0.0;
+        Set(k.GammaJ, 0.0, k.nbRefs);
         UpdateWeights(k, dict, signals);
 
         // Update dictionary with atom
-        for (int i = 0; i < k.atomSize; i++)
-            dict[j*k.atomSize + i] = k.atom[i];
+        Copy(&dict[j*k.atomSize], k.atom, k.atomSize);
 
         // Update signal weights
         for (int i = 0; i < k.nbRefs; i++)
@@ -354,10 +433,11 @@ void KSVDStep(
 
 void BOMP(
     const double* dict, int atomSize, int nbAtoms,
-    const double* signals, int nbSignals, int maxEntries,
+    const double* signals, int nbSignals,
+    int maxEntries, double epsilon,
     int* nbEntries, int* indices, double* values)
 {
-    OMPContext c(atomSize, nbAtoms, maxEntries);
+    OMPContext c(atomSize, nbAtoms, maxEntries, epsilon);
     BOMPInternal(c, dict, signals, nbSignals, nbEntries, indices, values);
 }
 
@@ -365,13 +445,13 @@ void BOMP(
 void KSVD(
     double* dict, int atomSize, int nbAtoms,
     const double* signals, int nbSignals,
-    int maxEntries,
+    int maxEntries, double epsilon,
     int nbIters)
 {
     int dictSize = atomSize*nbAtoms;
 
     KSVDContext k(atomSize, nbAtoms, maxEntries, nbSignals);
-    OMPContext  c(atomSize, nbAtoms, maxEntries);
+    OMPContext  c(atomSize, nbAtoms, maxEntries, epsilon);
 
     for (int i = 0; i < nbIters; i++)
         KSVDStep(k, c, dict, signals);

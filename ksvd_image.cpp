@@ -170,14 +170,16 @@ int main(int argc, char* argv[])
 
     // Evolve the DCT dictionary via K-SVD
     const int maxEntries = 4;
+    const double epsilon = 0.01;
     const int nbIters    = 50;
-    KSVD(atoms, blockSize, nbAtoms, signals, nbSignals, maxEntries, nbIters);
+    KSVD(atoms, blockSize, nbAtoms, signals, nbSignals, maxEntries, epsilon, nbIters);
 
     int*    nbEntries = new int[nbSignals];
     int*    indices   = new int[nbSignals*maxEntries];
     double* values    = new double[nbSignals*maxEntries];
 
-    BOMP(atoms, blockSize, nbAtoms, signals, nbSignals, maxEntries,
+    BOMP(atoms, blockSize, nbAtoms, signals, nbSignals,
+        maxEntries, epsilon,
         nbEntries, indices, values);
 
     // Update signals with compressed version
