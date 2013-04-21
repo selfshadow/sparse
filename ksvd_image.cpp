@@ -128,9 +128,33 @@ int main(int argc, char* argv[])
 {
     int w, h, comp;
 
-    if (argc != 3)
+    if (argc != 6)
     {
-        printf("Syntax: %s <input image> <output image>\n", argv[0]);
+        printf("Syntax: %s <input image> <output image> atoms epsilon steps\n", argv[0]);
+        return -1;
+    }
+
+    const int nbDCT = 11;
+    const int nbAtoms = nbDCT*nbDCT;
+
+    const int maxEntries = atoi(argv[3]);
+    if (!(maxEntries >= 1 && maxEntries <= nbAtoms))
+    {
+        printf("Atom count must be in the range [1, %d]\n", nbAtoms);
+        return -1;
+    }
+
+    const double epsilon = atof(argv[4]);
+    if (epsilon < 0)
+    {
+        printf("Epsilon must be >= 0\n");
+        return -1;
+    }
+
+    const int nbIters = atoi(argv[5]);
+    if (nbIters < 0)
+    {
+        printf("Number of K-SVD steps must be >= 0\n");
         return -1;
     }
 
@@ -163,15 +187,10 @@ int main(int argc, char* argv[])
     double* signals = new double[w*h];
     ImageToSignals(image, signals, w, h, blockW);
 
-    const int nbDCT = 11;
-    const int nbAtoms = nbDCT*nbDCT;
     double* atoms = new double[nbAtoms*blockSize];
     CreateDCTDictionary(atoms, blockW, nbDCT);
 
     // Evolve the DCT dictionary via K-SVD
-    const int maxEntries = 4;
-    const double epsilon = 0.01;
-    const int nbIters    = 50;
     KSVD(atoms, blockSize, nbAtoms, signals, nbSignals, maxEntries, epsilon, nbIters);
 
     int*    nbEntries = new int[nbSignals];

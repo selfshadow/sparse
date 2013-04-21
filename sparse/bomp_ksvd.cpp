@@ -2,7 +2,6 @@
 
 #include <memory.h>
 #include <math.h>
-#include <stdio.h>
 
 
 inline void Set(double* v, double x, int len)
