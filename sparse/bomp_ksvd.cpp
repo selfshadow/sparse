@@ -70,7 +70,7 @@ inline void GramMatrix(const double* M, double* G, int nbColumns, int nbRows)
     for (int i = 0; i < nbRows; i++)
     for (int j = 0; j < nbRows; j++)
     {
-        float dot = 0.0;
+        double dot = 0.0;
         for (int k = 0; k < nbColumns; k++)
             dot += M[i*nbColumns + k]*M[j*nbColumns + k];
         G[i*nbRows + j] = dot;

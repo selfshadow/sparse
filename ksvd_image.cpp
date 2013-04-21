@@ -21,7 +21,7 @@ void CreateDCTDictionary(double* atoms, int blockW, int nbDCT)
 {
     const int blockSize = blockW*blockW;
     const int nbAtoms   = nbDCT*nbDCT;
-    const float pi      = 3.14159265;
+    const double pi     = 3.14159265;
 
     double* dct1D = new double[nbDCT*blockW];
     int offset = 0;
@@ -48,7 +48,7 @@ void CreateDCTDictionary(double* atoms, int blockW, int nbDCT)
     for (int j = 0; j < nbDCT; j++)
     for (int i = 0; i < nbDCT; i++)
     {
-        float m = 0.0;
+        double m = 0.0;
 
         int k = 0;
         for (int h = 0; h < blockW; h++)
