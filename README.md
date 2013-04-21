@@ -1,0 +1,4 @@
+sparse
+======
+
+Sparse encoding testbed
