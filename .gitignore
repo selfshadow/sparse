@@ -1,13 +1,7 @@
-# Compiled Object files
-*.slo
-*.lo
-*.o
+ksvd_image
 
-# Compiled Dynamic libraries
-*.so
-*.dylib
+Makefile
+*.make
 
-# Compiled Static libraries
-*.lai
-*.la
-*.a
+debug/
+release/
