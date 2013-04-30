@@ -1,6 +1,5 @@
 #include "bomp_ksvd.h"
 
-#include <memory.h>
 #include <math.h>
 
 
