@@ -82,7 +82,7 @@ void ImageToSignals(const byte* image, double* signals, int w, int h, int blockW
     {
         for (int sy = 0; sy < blockW; sy++)
         for (int sx = 0; sx < blockW; sx++)
-            signals[offset++] += image[(x + sx) + (y + sy)*w]/255.0;
+            signals[offset++] = image[(x + sx) + (y + sy)*w]/255.0;
     }
 }
 
@@ -96,7 +96,7 @@ void SignalsToImage(double* signals, byte* image, int w, int h, int blockW)
         {
             double signal = *signals++;
             signal = clamp(signal*255 + 0.5, 0, 255);
-            image[(x + sx) + (y + sy)*w] = (stbi_uc)signal;
+            image[(x + sx) + (y + sy)*w] = (byte)signal;
         }
     }
 }
