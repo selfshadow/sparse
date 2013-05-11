@@ -158,6 +158,7 @@ int main(int argc, char* argv[])
         return -1;
     }
 
+    // Load the image
     byte* image = stbi_load(argv[1], &w, &h, &comp, 0);
 
     if (!image)
@@ -184,9 +185,11 @@ int main(int argc, char* argv[])
     const int blockSize = blockW*blockW;
     int nbSignals = w*h/blockSize;
 
+    // Convert the image into 8x8 blocks ('signals')
     double* signals = new double[w*h];
     ImageToSignals(image, signals, w, h, blockW);
 
+    // Create an initial over-complete DCT dictionary
     double* atoms = new double[nbAtoms*blockSize];
     CreateDCTDictionary(atoms, blockW, nbDCT);
 
@@ -197,21 +200,21 @@ int main(int argc, char* argv[])
     int*    indices   = new int[nbSignals*maxEntries];
     double* values    = new double[nbSignals*maxEntries];
 
+    // Approximate the signals using the resulting dictionary
     BOMP(atoms, blockSize, nbAtoms, signals, nbSignals,
         maxEntries, epsilon,
         nbEntries, indices, values);
 
-    // Update signals with compressed version
+    // Update the signals with compressed version
     UpdateSignals(atoms, blockSize, signals, nbSignals, maxEntries,
         nbEntries, indices, values);
 
+    // Write out the reconstructed image
     SignalsToImage(signals, image, w, h, blockW);
-
     stbi_write_png(argv[2], w, h, comp, image, 0);
 
     delete[] signals;
     delete[] atoms;
-
     delete[] nbEntries;
     delete[] indices;
     delete[] values;

@@ -106,7 +106,6 @@ struct OMPContext
         beta   = new double[nbAtoms];
         used   = new bool  [nbAtoms];
         L      = new double[maxEntries*maxEntries];
-
         temp0  = new double[maxEntries];
         temp1  = new double[maxEntries];
     };
@@ -119,7 +118,6 @@ struct OMPContext
         delete[] beta;
         delete[] used;
         delete[] L;
-
         delete[] temp0;
         delete[] temp1;
     }
@@ -136,7 +134,6 @@ struct OMPContext
     double* beta;
     bool*   used;
     double* L;
-
     double* temp0;
     double* temp1;
 };
@@ -255,9 +252,8 @@ struct KSVDContext
         delete[] GammaI;
         delete[] GammaV;
         delete[] GammaJ;
-
         delete[] refs;
-
+        delete[] used;
         delete[] atom;
     }
 
@@ -266,16 +262,14 @@ struct KSVDContext
     int nbSignals;
     int maxEntries;
 
+    int     nbRefs;
+
     int*    GammaE; // Entry counts (one per signal)
     int*    GammaI; // Atom indices (up to maxEntries per signal)
     double* GammaV; // Atom weights (up to maxEntries per signal)
     double* GammaJ; // Atom weights for the current (J-th) atom
-
-    int     nbRefs;
     int*    refs;   // Indices for the signals referencing the current atom
-
     bool*   used;   // Track signals that have replaced unused atoms in the dictionary
-
     double* atom;   // Revised atom
 };
 
