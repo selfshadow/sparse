@@ -108,6 +108,10 @@ struct OMPContext
         L      = new double[maxEntries*maxEntries];
         temp0  = new double[maxEntries];
         temp1  = new double[maxEntries];
+
+        // Set a sensible lower bound to avoid numerical instability
+        if (epsilon < 1e-10)
+            epsilon = 1e-10;
     };
 
     ~OMPContext()
@@ -236,14 +240,12 @@ struct KSVDContext
         GammaI = new int[nbSignals*maxEntries];
         GammaV = new double[nbSignals*maxEntries];
         GammaJ = new double[nbSignals];
-
         refs   = new int[nbSignals];
-
         used   = new bool[nbSignals];
+        atom   = new double[atomSize];
+
         for (int i = 0; i < nbSignals; i++)
             used[i] = false;
-
-        atom   = new double[atomSize];
     }
 
     ~KSVDContext()
@@ -262,7 +264,7 @@ struct KSVDContext
     int nbSignals;
     int maxEntries;
 
-    int     nbRefs;
+    int nbRefs;
 
     int*    GammaE; // Entry counts (one per signal)
     int*    GammaI; // Atom indices (up to maxEntries per signal)

@@ -205,7 +205,7 @@ int main(int argc, char* argv[])
         maxEntries, epsilon,
         nbEntries, indices, values);
 
-    // Update the signals with compressed version
+    // Update the signals with the compressed version
     UpdateSignals(atoms, blockSize, signals, nbSignals, maxEntries,
         nbEntries, indices, values);
 
