@@ -74,24 +74,24 @@ void CreateDCTDictionary(double* atoms, int blockW, int nbDCT)
 }
 
 
-void ImageToSignals(const byte* image, double* signals, int w, int h, int blockW)
+void ImageToSignals(const byte* image, double* signals, int w, int h, int blockW, int blockH)
 {
     int offset = 0;
-    for (int y = 0; y < h; y += blockW)
+    for (int y = 0; y < h; y += blockH)
     for (int x = 0; x < w; x += blockW)
     {
-        for (int sy = 0; sy < blockW; sy++)
+        for (int sy = 0; sy < blockH; sy++)
         for (int sx = 0; sx < blockW; sx++)
             signals[offset++] = image[(x + sx) + (y + sy)*w]/255.0;
     }
 }
 
-void SignalsToImage(double* signals, byte* image, int w, int h, int blockW)
+void SignalsToImage(double* signals, byte* image, int w, int h, int blockW, int blockH)
 {
-    for (int y = 0; y < h; y += blockW)
+    for (int y = 0; y < h; y += blockH)
     for (int x = 0; x < w; x += blockW)
     {
-        for (int sy = 0; sy < blockW; sy++)
+        for (int sy = 0; sy < blockH; sy++)
         for (int sx = 0; sx < blockW; sx++)
         {
             double signal = *signals++;
@@ -174,24 +174,20 @@ int main(int argc, char* argv[])
         return -1;
     }
 
-    if (comp != 1)
-    {
-        printf("Wrong image format (needs to be greyscale)\n");
-        stbi_image_free(image);
-        return -1;
-    }
-
-    const int blockW    = 8;
-    const int blockSize = blockW*blockW;
-    int nbSignals = w*h/blockSize;
+    const int nbChannels = comp;
+    const int stride     = w*nbChannels;
+    const int blockH     = 8;
+    const int blockW     = blockH*nbChannels;
+    const int blockSize  = blockW*blockH;
+    const int nbSignals  = stride*h/blockSize;
 
     // Convert the image into 8x8 blocks ('signals')
-    double* signals = new double[w*h];
-    ImageToSignals(image, signals, w, h, blockW);
+    double* signals = new double[stride*h];
+    ImageToSignals(image, signals, stride, h, blockW, blockH);
 
     // Create an initial over-complete DCT dictionary
     double* atoms = new double[nbAtoms*blockSize];
-    CreateDCTDictionary(atoms, blockW, nbDCT);
+    CreateDCTDictionary(atoms, blockH, nbDCT);
 
     // Evolve the DCT dictionary via K-SVD
     KSVD(atoms, blockSize, nbAtoms, signals, nbSignals, maxEntries, epsilon, nbIters);
@@ -210,7 +206,7 @@ int main(int argc, char* argv[])
         nbEntries, indices, values);
 
     // Write out the reconstructed image
-    SignalsToImage(signals, image, w, h, blockW);
+    SignalsToImage(signals, image, stride, h, blockW, blockH);
     stbi_write_png(argv[2], w, h, comp, image, 0);
 
     delete[] signals;
