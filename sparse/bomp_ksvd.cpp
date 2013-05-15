@@ -1,6 +1,7 @@
 #include "bomp_ksvd.h"
-
 #include <math.h>
+
+static const double OMP_EPSILON = 1e-10;
 
 
 inline void Set(double* v, double x, int len)
@@ -94,11 +95,11 @@ inline void Normalize(double* v, int len)
 
 struct OMPContext
 {
-    OMPContext(int atomSize_, int nbAtoms_, int maxEntries_, double epsilon_) :
+    OMPContext(int atomSize_, int nbAtoms_, int maxEntries_, double error_) :
         atomSize(atomSize_),
         nbAtoms(nbAtoms_),
         maxEntries(maxEntries_),
-        epsilon(epsilon_*epsilon_)
+        error(error_*error_)
     {
         G      = new double[nbAtoms*nbAtoms];
         alpha0 = new double[nbAtoms];
@@ -110,8 +111,8 @@ struct OMPContext
         temp1  = new double[maxEntries];
 
         // Set a sensible lower bound to avoid numerical instability
-        if (epsilon < 1e-10)
-            epsilon = 1e-10;
+        if (error < OMP_EPSILON)
+            error = OMP_EPSILON;
     };
 
     ~OMPContext()
@@ -130,7 +131,7 @@ struct OMPContext
     int nbAtoms;
 
     int maxEntries;
-    double epsilon;
+    double error;
 
     double* G;
     double* alpha0;
@@ -143,7 +144,7 @@ struct OMPContext
 };
 
 
-void BOMPInternal(
+static void BOMPInternal(
     OMPContext& c,
     const double* dict, const double* signals, int nbSignals,
     int* entries, int* indices, double* values)
@@ -164,7 +165,7 @@ void BOMPInternal(
 
         c.L[0] = 1.0;
 
-        double eps = Dot(signal, signal, c.atomSize);
+        double error = Dot(signal, signal, c.atomSize);
         double delta = 0.0;
 
         int nbEntries = 0;
@@ -172,7 +173,7 @@ void BOMPInternal(
         for (int i = 0; i < c.maxEntries; i++)
         {
             // Exit if we've hit the threshold
-            if (eps <= c.epsilon)
+            if (error <= c.error)
                 break;
 
             int aIndex = FindAbsMax(c.alpha, c.nbAtoms);
@@ -193,7 +194,14 @@ void BOMPInternal(
                 double* Lrow = &c.L[nbEntries*c.maxEntries];
                 for (int j = 0; j < nbEntries; j++)
                     *Lrow++ = c.temp1[j];
-                *Lrow = sqrt(1 - Dot(c.temp1, c.temp1, nbEntries));
+
+                double v = 1.0 - Dot(c.temp1, c.temp1, nbEntries);
+
+                // Prevent numerical issues with small [negative] numbers
+                if (v < OMP_EPSILON)
+                    break;
+
+                *Lrow = sqrt(v);
             }
 
             indices[nbEntries++] = aIndex;
@@ -212,11 +220,11 @@ void BOMPInternal(
                 c.alpha[j] = c.alpha0[j] - c.beta[j];
             }
 
-            eps += delta;
+            error += delta;
             delta = 0.0;
             for (int m = 0; m < nbEntries; m++)
                 delta += c.beta[indices[m]]*values[m];
-            eps -= delta;
+            error -= delta;
         }
 
         *entries++ = nbEntries;
@@ -276,7 +284,7 @@ struct KSVDContext
 };
 
 
-void FindReferences(KSVDContext& k, int j)
+static void FindReferences(KSVDContext& k, int j)
 {
     k.nbRefs = 0;
 
@@ -296,7 +304,7 @@ void FindReferences(KSVDContext& k, int j)
     }
 }
 
-void ReplaceAtom(KSVDContext& k, const double* dict, const double* signals, double* atom)
+static void ReplaceAtom(KSVDContext& k, const double* dict, const double* signals, double* atom)
 {
     int    maxI = 0;
     double maxE = 0.0;
@@ -333,7 +341,7 @@ void ReplaceAtom(KSVDContext& k, const double* dict, const double* signals, doub
     Normalize(atom, k.atomSize);
 }
 
-void UpdateAtom(KSVDContext& k, const double* dict, const double* signals)
+static void UpdateAtom(KSVDContext& k, const double* dict, const double* signals)
 {
     for (int r = 0; r < k.nbRefs; r++)
     {
@@ -353,7 +361,7 @@ void UpdateAtom(KSVDContext& k, const double* dict, const double* signals)
     }
 }
 
-void UpdateWeights(KSVDContext& k, const double* dict, const double* signals)
+static void UpdateWeights(KSVDContext& k, const double* dict, const double* signals)
 {
     for (int r = 0; r < k.nbRefs; r++)
     {
@@ -374,7 +382,7 @@ void UpdateWeights(KSVDContext& k, const double* dict, const double* signals)
 }
 
 
-void KSVDStep(
+static void KSVDStep(
     KSVDContext& k, OMPContext& c,
     double* dict, const double* signals)
 {
@@ -428,10 +436,10 @@ void KSVDStep(
 void BOMP(
     const double* dict, int atomSize, int nbAtoms,
     const double* signals, int nbSignals,
-    int maxEntries, double epsilon,
+    int maxEntries, double error,
     int* nbEntries, int* indices, double* values)
 {
-    OMPContext c(atomSize, nbAtoms, maxEntries, epsilon);
+    OMPContext c(atomSize, nbAtoms, maxEntries, error);
     BOMPInternal(c, dict, signals, nbSignals, nbEntries, indices, values);
 }
 
@@ -439,13 +447,13 @@ void BOMP(
 void KSVD(
     double* dict, int atomSize, int nbAtoms,
     const double* signals, int nbSignals,
-    int maxEntries, double epsilon,
+    int maxEntries, double error,
     int nbIters)
 {
     int dictSize = atomSize*nbAtoms;
 
     KSVDContext k(atomSize, nbAtoms, maxEntries, nbSignals);
-    OMPContext  c(atomSize, nbAtoms, maxEntries, epsilon);
+    OMPContext  c(atomSize, nbAtoms, maxEntries, error);
 
     for (int i = 0; i < nbIters; i++)
         KSVDStep(k, c, dict, signals);

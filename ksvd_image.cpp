@@ -1,9 +1,7 @@
 #include "sparse/bomp_ksvd.h"
-
 #include "stb/stb_image.h"
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "stb/stb_image_write.h"
-
 #include <math.h>
 
 typedef unsigned char byte;
@@ -17,9 +15,9 @@ double clamp(double v, double min, double max)
 }
 
 
-void CreateDCTDictionary(double* atoms, int blockW, int nbDCT)
+void CreateDCTDictionary(double* atoms, int blockW, int nbDCT, int nbChannels)
 {
-    const int blockSize = blockW*blockW;
+    const int blockSize = blockW*blockW*nbChannels;
     const int nbAtoms   = nbDCT*nbDCT;
     const double pi     = 3.14159265;
 
@@ -58,8 +56,11 @@ void CreateDCTDictionary(double* atoms, int blockW, int nbDCT)
             double b = dct1D[j*blockW + w];
             double v = a*b;
 
-            atom[k++] = v;
-            m += v*v;
+            for (int c = 0; c < nbChannels; c++)
+            {
+                atom[k++] = v;
+                m += v*v;
+            }
         }
 
         // Normalise
@@ -126,11 +127,9 @@ void UpdateSignals(
 
 int main(int argc, char* argv[])
 {
-    int w, h, comp;
-
     if (argc != 6)
     {
-        printf("Syntax: %s <input image> <output image> atoms epsilon steps\n", argv[0]);
+        printf("Syntax: %s <input image> <output image> atoms error steps\n", argv[0]);
         return -1;
     }
 
@@ -144,10 +143,10 @@ int main(int argc, char* argv[])
         return -1;
     }
 
-    const double epsilon = atof(argv[4]);
-    if (epsilon < 0)
+    const double error = atof(argv[4]);
+    if (error < 0)
     {
-        printf("Epsilon must be >= 0\n");
+        printf("Error must be >= 0\n");
         return -1;
     }
 
@@ -159,7 +158,8 @@ int main(int argc, char* argv[])
     }
 
     // Load the image
-    byte* image = stbi_load(argv[1], &w, &h, &comp, 0);
+    int w, h, nbChannels;
+    byte* image = stbi_load(argv[1], &w, &h, &nbChannels, 0);
 
     if (!image)
     {
@@ -174,12 +174,11 @@ int main(int argc, char* argv[])
         return -1;
     }
 
-    const int nbChannels = comp;
-    const int stride     = w*nbChannels;
-    const int blockH     = 8;
-    const int blockW     = blockH*nbChannels;
-    const int blockSize  = blockW*blockH;
-    const int nbSignals  = stride*h/blockSize;
+    const int stride    = w*nbChannels;
+    const int blockH    = 8;
+    const int blockW    = blockH*nbChannels;
+    const int blockSize = blockW*blockH;
+    const int nbSignals = stride*h/blockSize;
 
     // Convert the image into 8x8 blocks ('signals')
     double* signals = new double[stride*h];
@@ -187,10 +186,10 @@ int main(int argc, char* argv[])
 
     // Create an initial over-complete DCT dictionary
     double* atoms = new double[nbAtoms*blockSize];
-    CreateDCTDictionary(atoms, blockH, nbDCT);
+    CreateDCTDictionary(atoms, blockH, nbDCT, nbChannels);
 
     // Evolve the DCT dictionary via K-SVD
-    KSVD(atoms, blockSize, nbAtoms, signals, nbSignals, maxEntries, epsilon, nbIters);
+    KSVD(atoms, blockSize, nbAtoms, signals, nbSignals, maxEntries, error, nbIters);
 
     int*    nbEntries = new int[nbSignals];
     int*    indices   = new int[nbSignals*maxEntries];
@@ -198,7 +197,7 @@ int main(int argc, char* argv[])
 
     // Approximate the signals using the resulting dictionary
     BOMP(atoms, blockSize, nbAtoms, signals, nbSignals,
-        maxEntries, epsilon,
+        maxEntries, error,
         nbEntries, indices, values);
 
     // Update the signals with the compressed version
@@ -207,7 +206,7 @@ int main(int argc, char* argv[])
 
     // Write out the reconstructed image
     SignalsToImage(signals, image, stride, h, blockW, blockH);
-    stbi_write_png(argv[2], w, h, comp, image, 0);
+    stbi_write_png(argv[2], w, h, nbChannels, image, 0);
 
     delete[] signals;
     delete[] atoms;
