@@ -10,7 +10,7 @@ A sparse encoding testbed.
 ### Examples
 **ksvd_image**: a simple test app demonstrating how to use the BOMP and KSVD functions, with the syntax:
 
-    ksvd_image <input image> <output image> atoms epsilon steps
+    ksvd_image <input image> <output image> atoms error steps
 
 For instance:
     
