@@ -1,7 +1,9 @@
 #include "bomp_ksvd.h"
 #include <math.h>
 
+
 static const double OMP_EPSILON = 1e-10;
+static const double OMP_SIMILARITY_THRESHOLD = 0.999;
 
 
 inline void Set(double* v, double x, int len)
@@ -333,12 +335,37 @@ static void ReplaceAtom(KSVDContext& k, const double* dict, const double* signal
         }
     }
 
+    // If the max error is zero, either all signals have been used
+    // or they're all perfectly represented (unlikely!)
+    if (maxE == 0.0)
+        return;
+
+    // Replacement signal, plus squared length
+    const double* signalA = &signals[maxI*k.atomSize];
+
+    // Replace the atom and normalise it
+    for (int i = 0; i < k.atomSize; i++)
+        atom[i] = signalA[i];
+    Normalize(atom, k.atomSize);
+
     // Mark signal so it's not used to replace multiple atoms
     k.used[maxI] = true;
 
-    for (int i = 0; i < k.atomSize; i++)
-        atom[i] = signals[maxI*k.atomSize + i];
-    Normalize(atom, k.atomSize);
+    // Mark similar signals as well
+    const double thresh = OMP_SIMILARITY_THRESHOLD;
+    const double tSqr   = thresh*thresh;
+    for (int s = 0; s < k.nbSignals; s++)
+    {
+        const double* signalB = &signals[s*k.atomSize];
+        double lenSqrB = Dot(signalB, signalB, k.atomSize);
+
+        double dist = Dot(atom, signalB, k.atomSize);
+
+        // Similarity check: Dot[atom, sB] > thresh*|sB|
+        // In practice: check the squares, to avoid a sqrt()
+        if (dist*dist > tSqr*lenSqrB)
+            k.used[s] = true;
+    }
 }
 
 static void UpdateAtom(KSVDContext& k, const double* dict, const double* signals)
